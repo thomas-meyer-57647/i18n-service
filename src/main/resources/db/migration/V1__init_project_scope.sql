@@ -1,4 +1,4 @@
-CREATE TABLE project_scope (
+CREATE TABLE i18n_project_scope (
                                id BIGINT NOT NULL AUTO_INCREMENT,
                                project_key VARCHAR(32) NOT NULL,
                                display_name VARCHAR(120) NULL,
