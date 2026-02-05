@@ -7,8 +7,10 @@ import de.innologic.i18nservice.language.dto.LanguageResponse;
 import de.innologic.i18nservice.language.dto.UpdateLanguageRequest;
 import de.innologic.i18nservice.language.model.LanguageEntity;
 import de.innologic.i18nservice.language.repo.LanguageRepository;
+import de.innologic.i18nservice.projectscope.model.ProjectScopeEntity;
 import de.innologic.i18nservice.projectscope.repo.ProjectScopeRepository;
 import de.innologic.i18nservice.projectscope.service.ProjectKeyValidator;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,23 +18,26 @@ import java.time.Instant;
 import java.util.List;
 
 @Service
+@RequiredArgsConstructor
 public class LanguageService {
 
-    private final ProjectScopeRepository scopeRepo;
-    private final LanguageRepository languageRepo;
+    private final ProjectScopeRepository projectScopeRepository;
+    private final LanguageRepository languageRepository;
 
-    public LanguageService(ProjectScopeRepository scopeRepo, LanguageRepository languageRepo) {
-        this.scopeRepo = scopeRepo;
-        this.languageRepo = languageRepo;
-    }
-
+    /**
+     * P0-2 Create
+     * Step 6B: Wenn noch kein Default gesetzt ist, wird die erste Sprache Default.
+     */
     @Transactional
     public LanguageResponse create(String projectKey, CreateLanguageRequest req, String actor) {
-        ensureProjectExists(projectKey);
+        ProjectKeyValidator.validate(projectKey);
 
-        String code = normalizeCode(req.languageCode());
+        ProjectScopeEntity scope = projectScopeRepository.findByProjectKey(projectKey)
+                .orElseThrow(() -> new NotFoundException("Project not found: " + projectKey));
 
-        if (languageRepo.existsByProjectKeyAndLanguageCodeAndDeletedFalse(projectKey, code)) {
+        String code = normalizeLanguageCode(req.languageCode());
+
+        if (languageRepository.existsByProjectKeyAndLanguageCodeAndDeletedFalse(projectKey, code)) {
             throw new ConflictException("Language already exists: " + code);
         }
 
@@ -45,105 +50,168 @@ public class LanguageService {
         e.setCreatedBy(actor);
         e.setModifiedBy(actor);
 
-        return LanguageResponse.from(languageRepo.save(e));
+        LanguageEntity saved = languageRepository.save(e);
+
+        // Step 6B: Default automatisch setzen, wenn noch nicht vorhanden
+        if (isBlank(scope.getDefaultLanguageCode())) {
+            scope.setDefaultLanguageCode(saved.getLanguageCode());
+            projectScopeRepository.save(scope);
+        }
+
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
     public List<LanguageResponse> list(String projectKey) {
+        ProjectKeyValidator.validate(projectKey);
         ensureProjectExists(projectKey);
 
-        return languageRepo.findByProjectKeyAndDeletedFalseOrderByLanguageCodeAsc(projectKey)
+        return languageRepository.findByProjectKeyAndDeletedFalseOrderByLanguageCodeAsc(projectKey)
                 .stream()
-                .map(LanguageResponse::from)
+                .map(this::toResponse)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public LanguageResponse get(String projectKey, String languageCode) {
+        ProjectKeyValidator.validate(projectKey);
         ensureProjectExists(projectKey);
 
-        LanguageEntity e = languageRepo
-                .findByProjectKeyAndLanguageCodeAndDeletedFalse(projectKey, normalizeCode(languageCode))
-                .orElseThrow(() -> new NotFoundException("Language not found: " + languageCode));
+        String code = normalizeLanguageCode(languageCode);
 
-        return LanguageResponse.from(e);
+        LanguageEntity e = languageRepository.findByProjectKeyAndLanguageCodeAndDeletedFalse(projectKey, code)
+                .orElseThrow(() -> new NotFoundException("Language not found: " + code));
+
+        return toResponse(e);
     }
 
+    /**
+     * P0-2 Update
+     * Step 6C: Default-Sprache darf nicht deaktiviert werden.
+     */
     @Transactional
     public LanguageResponse update(String projectKey, String languageCode, UpdateLanguageRequest req, String actor) {
-        ensureProjectExists(projectKey);
+        ProjectKeyValidator.validate(projectKey);
 
-        LanguageEntity e = languageRepo
-                .findByProjectKeyAndLanguageCodeAndDeletedFalse(projectKey, normalizeCode(languageCode))
-                .orElseThrow(() -> new NotFoundException("Language not found: " + languageCode));
+        ProjectScopeEntity scope = projectScopeRepository.findByProjectKey(projectKey)
+                .orElseThrow(() -> new NotFoundException("Project not found: " + projectKey));
 
+        String code = normalizeLanguageCode(languageCode);
+
+        LanguageEntity e = languageRepository.findByProjectKeyAndLanguageCodeAndDeletedFalse(projectKey, code)
+                .orElseThrow(() -> new NotFoundException("Language not found: " + code));
+
+        // zusätzlicher Guard (optional) – @Version macht's sowieso, aber so gibt's klare Fehlermeldung
         if (e.getVersion() != req.expectedVersion()) {
-            throw new ConflictException(
-                    "Version conflict. Current=" + e.getVersion() + ", expected=" + req.expectedVersion()
-            );
+            throw new ConflictException("Version conflict. Current=" + e.getVersion() + ", expected=" + req.expectedVersion());
+        }
+
+        // Step 6C: Default darf nicht deaktiviert werden
+        if (!req.active() && code.equals(scope.getDefaultLanguageCode())) {
+            throw new ConflictException("Cannot deactivate default language: " + code);
         }
 
         e.setName(req.name());
         e.setActive(req.active());
         e.setModifiedBy(actor);
 
-        return LanguageResponse.from(languageRepo.save(e));
+        LanguageEntity saved = languageRepository.save(e);
+        return toResponse(saved);
     }
 
+    /**
+     * P0-2 Soft Delete
+     * Step 6A: Default/Fallback darf nicht gelöscht werden.
+     */
     @Transactional
     public void softDelete(String projectKey, String languageCode, String actor) {
-        ensureProjectExists(projectKey);
+        ProjectKeyValidator.validate(projectKey);
 
-        LanguageEntity e = languageRepo
-                .findByProjectKeyAndLanguageCodeAndDeletedFalse(projectKey, normalizeCode(languageCode))
-                .orElseThrow(() -> new NotFoundException("Language not found: " + languageCode));
+        ProjectScopeEntity scope = projectScopeRepository.findByProjectKey(projectKey)
+                .orElseThrow(() -> new NotFoundException("Project not found: " + projectKey));
+
+        String code = normalizeLanguageCode(languageCode);
+
+        // Step 6A: Default/Fallback darf nicht gelöscht werden
+        if (code.equals(scope.getDefaultLanguageCode())) {
+            throw new ConflictException("Cannot delete default language: " + code);
+        }
+        if (!isBlank(scope.getFallbackLanguageCode()) && code.equals(scope.getFallbackLanguageCode())) {
+            throw new ConflictException("Cannot delete fallback language: " + code);
+        }
+
+        LanguageEntity e = languageRepository.findByProjectKeyAndLanguageCodeAndDeletedFalse(projectKey, code)
+                .orElseThrow(() -> new NotFoundException("Language not found: " + code));
 
         e.setDeleted(true);
         e.setDeletedAt(Instant.now());
         e.setDeletedBy(actor);
         e.setModifiedBy(actor);
 
-        languageRepo.save(e);
+        languageRepository.save(e);
     }
 
+    /**
+     * P0-2 Restore
+     */
     @Transactional
     public LanguageResponse restore(String projectKey, String languageCode, String actor) {
+        ProjectKeyValidator.validate(projectKey);
         ensureProjectExists(projectKey);
 
-        String code = normalizeCode(languageCode);
+        String code = normalizeLanguageCode(languageCode);
 
-        if (languageRepo.existsByProjectKeyAndLanguageCodeAndDeletedFalse(projectKey, code)) {
+        if (languageRepository.existsByProjectKeyAndLanguageCodeAndDeletedFalse(projectKey, code)) {
             throw new ConflictException("Cannot restore. Active language with same code exists: " + code);
         }
 
-        LanguageEntity e = languageRepo
-                .findByProjectKeyAndLanguageCodeAndDeletedTrue(projectKey, code)
-                .orElseThrow(() -> new NotFoundException("Deleted language not found: " + languageCode));
+        LanguageEntity e = languageRepository.findByProjectKeyAndLanguageCodeAndDeletedTrue(projectKey, code)
+                .orElseThrow(() -> new NotFoundException("Deleted language not found: " + code));
 
         e.setDeleted(false);
         e.setDeletedAt(null);
         e.setDeletedBy(null);
         e.setModifiedBy(actor);
 
-        return LanguageResponse.from(languageRepo.save(e));
+        LanguageEntity saved = languageRepository.save(e);
+        return toResponse(saved);
     }
 
-    private void ensureProjectExists(String projectKey) {
-        ProjectKeyValidator.validate(projectKey);
+    // -------------------------
+    // Helpers
+    // -------------------------
 
-        if (!scopeRepo.existsByProjectKey(projectKey)) {
+    private void ensureProjectExists(String projectKey) {
+        if (!projectScopeRepository.existsByProjectKey(projectKey)) {
             throw new NotFoundException("Project not found: " + projectKey);
         }
     }
 
-    private String normalizeCode(String code) {
+    private String normalizeLanguageCode(String code) {
         if (code == null) {
-            throw new IllegalArgumentException("languageCode must not be null");
+            throw new IllegalArgumentException("languageCode is required");
         }
         String trimmed = code.trim();
         if (trimmed.isEmpty()) {
-            throw new IllegalArgumentException("languageCode must not be blank");
+            throw new IllegalArgumentException("languageCode is required");
         }
         return trimmed;
+    }
+
+    private boolean isBlank(String s) {
+        return s == null || s.trim().isEmpty();
+    }
+
+    private LanguageResponse toResponse(LanguageEntity e) {
+        // Passe den Konstruktor an, falls dein LanguageResponse andere Felder hat.
+        return new LanguageResponse(
+                e.getId(),
+                e.getProjectKey(),
+                e.getLanguageCode(),
+                e.getName(),
+                e.isActive(),
+                e.isDeleted(),
+                e.getVersion()
+        );
     }
 }

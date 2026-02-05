@@ -7,7 +7,7 @@ import java.time.Instant;
 
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PUBLIC) // oder PROTECTED, wenn du Factory nutzt
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 @Entity
 @Table(
         name = "i18n_project_scope",
@@ -24,6 +24,18 @@ public class ProjectScopeEntity {
 
     @Column(name = "display_name", length = 120)
     private String displayName;
+
+    // P0-3: Default/Fallback Sprache pro Projekt
+    @Column(name = "default_language_code", length = 35)
+    private String defaultLanguageCode;
+
+    @Column(name = "fallback_language_code", length = 35)
+    private String fallbackLanguageCode;
+
+    // P0-3: Optimistic Locking
+    @Version
+    @Column(name = "row_version", nullable = false)
+    private long version;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -43,4 +55,3 @@ public class ProjectScopeEntity {
         this.modifiedAt = Instant.now();
     }
 }
-

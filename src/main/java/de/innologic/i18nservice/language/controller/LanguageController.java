@@ -10,20 +10,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-/**
- language Tabelle mit project_key, language_code, row_version, is_deleted/deleted_at
-
- Unique: (project_key, language_code, is_deleted)
-
- Endpoints laufen:
- POST /api/v1/{projectKey}/languages
- GET /api/v1/{projectKey}/languages
- GET /api/v1/{projectKey}/languages/{languageCode}
- PUT /api/v1/{projectKey}/languages/{languageCode} (mit expectedVersion)
- DELETE /api/v1/{projectKey}/languages/{languageCode} (soft delete)
- POST /api/v1/{projectKey}/languages/{languageCode}/restore
-
- */
 @RestController
 @RequestMapping("/api/v1/{projectKey}/languages")
 public class LanguageController {
@@ -34,8 +20,13 @@ public class LanguageController {
         this.service = service;
     }
 
-    // später ggf. aus IAM/JWT ziehen
-    private String actor() { return "system"; }
+    /**
+     * Später idealerweise aus IAM/JWT ableiten.
+     * Für P0 reicht ein Stub.
+     */
+    private String actor() {
+        return "system";
+    }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -52,7 +43,10 @@ public class LanguageController {
     }
 
     @GetMapping("/{languageCode}")
-    public LanguageResponse get(@PathVariable String projectKey, @PathVariable String languageCode) {
+    public LanguageResponse get(
+            @PathVariable String projectKey,
+            @PathVariable String languageCode
+    ) {
         return service.get(projectKey, languageCode);
     }
 
@@ -67,13 +61,18 @@ public class LanguageController {
 
     @DeleteMapping("/{languageCode}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void softDelete(@PathVariable String projectKey, @PathVariable String languageCode) {
+    public void softDelete(
+            @PathVariable String projectKey,
+            @PathVariable String languageCode
+    ) {
         service.softDelete(projectKey, languageCode, actor());
     }
 
     @PostMapping("/{languageCode}/restore")
-    public LanguageResponse restore(@PathVariable String projectKey, @PathVariable String languageCode) {
+    public LanguageResponse restore(
+            @PathVariable String projectKey,
+            @PathVariable String languageCode
+    ) {
         return service.restore(projectKey, languageCode, actor());
     }
 }
-
