@@ -1,0 +1,12 @@
+# build output
+/target/
+
+# VCS & IDE
+/.git/
+/.idea/
+
+# OS
+.DS_Store
+
+# local runtime data (mounted separately)
+/data/

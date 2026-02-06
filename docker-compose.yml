@@ -1,0 +1,43 @@
+services:
+  mariadb:
+    image: mariadb:10.4.32
+    container_name: i18n-mariadb
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USER: ${MARIADB_USER}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      TZ: ${APP_TZ}
+    ports:
+      - "${DB_PORT}:3306"
+    volumes:
+      - ./docker-data/mariadb:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p${MARIADB_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  i18n-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: i18n-service
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: 3306
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+
+      APP_BUNDLE_STORAGE_BASE_PATH: ${APP_BUNDLE_STORAGE_BASE_PATH}
+
+      SERVER_PORT: 8080
+      TZ: ${APP_TZ}
+    ports:
+      - "${APP_PORT}:8080"
+    volumes:
+      - ./docker-data/i18n:/data/i18n
+    depends_on:
+      mariadb:
+        condition: service_healthy
