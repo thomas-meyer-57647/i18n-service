@@ -9,10 +9,14 @@ import java.util.Optional;
 public interface LanguageRepository extends JpaRepository<LanguageEntity, Long> {
 
     List<LanguageEntity> findByProjectKeyAndDeletedFalseOrderByLanguageCodeAsc(String projectKey);
+    List<LanguageEntity> findByProjectKeyOrderByLanguageCodeAsc(String projectKey);
+    List<LanguageEntity> findByProjectKeyAndDeletedTrueOrderByLanguageCodeAsc(String projectKey);
+    List<LanguageEntity> findByProjectKeyAndDeletedFalseAndActiveTrueOrderByLanguageCodeAsc(String projectKey);
 
     Optional<LanguageEntity> findByProjectKeyAndLanguageCodeAndDeletedFalse(String projectKey, String languageCode);
-
     Optional<LanguageEntity> findByProjectKeyAndLanguageCodeAndDeletedTrue(String projectKey, String languageCode);
 
     boolean existsByProjectKeyAndLanguageCodeAndDeletedFalse(String projectKey, String languageCode);
+    boolean existsByProjectKeyAndLanguageCodeAndDeletedTrue(String projectKey, String languageCode);
+
 }

@@ -1,0 +1,58 @@
+package de.innologic.i18nservice.bundle.model;
+
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.time.Instant;
+
+@Getter
+@Setter
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
+@Entity
+@Table(name = "i18n_language_bundle")
+public class LanguageBundleEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
+    private Long id;
+
+    @Column(name = "language_id", nullable = false, unique = true)
+    private Long languageId;
+
+    /**
+     * Fachliche Bundle-Version (1..n). Diese Version referenziert die aktuell aktive
+     * Bundle-Datei für die Sprache.
+     */
+    @Column(name = "bundle_version", nullable = false)
+    private int bundleVersion = 1;
+
+    @Column(name = "file_format", nullable = false, length = 20)
+    private String fileFormat;
+
+    @Column(name = "original_file_name", nullable = false, length = 255)
+    private String originalFileName;
+
+    @Column(name = "content_type", length = 120)
+    private String contentType;
+
+    @Column(name = "storage_path", nullable = false, length = 500)
+    private String storagePath;
+
+    @Column(name = "sha256", nullable = false, length = 64)
+    private String sha256;
+
+    @Column(name = "size_bytes", nullable = false)
+    private long sizeBytes;
+
+    @Column(name = "uploaded_at", nullable = false)
+    private Instant uploadedAt = Instant.now();
+
+    @Column(name = "uploaded_by", length = 120)
+    private String uploadedBy;
+
+    @Version
+    @Column(name = "row_version", nullable = false)
+    private long version;
+}

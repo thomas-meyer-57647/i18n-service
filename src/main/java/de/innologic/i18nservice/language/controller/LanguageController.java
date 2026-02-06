@@ -21,8 +21,7 @@ public class LanguageController {
     }
 
     /**
-     * Später idealerweise aus IAM/JWT ableiten.
-     * Für P0 reicht ein Stub.
+     * Später per IAM/JWT ersetzen (z.B. Subject/Username).
      */
     private String actor() {
         return "system";
@@ -37,9 +36,23 @@ public class LanguageController {
         return service.create(projectKey, req, actor());
     }
 
+    /**
+     * Listing:
+     * - default: view=active  -> nur active && !deleted
+     * - view=all             -> alle (active+inactive, deleted+not deleted)
+     * - view=deleted         -> nur deleted
+     */
     @GetMapping
-    public List<LanguageResponse> list(@PathVariable String projectKey) {
-        return service.list(projectKey);
+    public List<LanguageResponse> list(
+            @PathVariable String projectKey,
+            @RequestParam(name = "view", defaultValue = "active") String view
+    ) {
+        return switch (view.toLowerCase()) {
+            case "active" -> service.listActive(projectKey);
+            case "all" -> service.listAll(projectKey);
+            case "deleted" -> service.listDeleted(projectKey);
+            default -> throw new IllegalArgumentException("Invalid view. Use: active | all | deleted");
+        };
     }
 
     @GetMapping("/{languageCode}")
@@ -59,6 +72,9 @@ public class LanguageController {
         return service.update(projectKey, languageCode, req, actor());
     }
 
+    /**
+     * Soft delete -> Papierkorb
+     */
     @DeleteMapping("/{languageCode}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void softDelete(
@@ -74,5 +90,20 @@ public class LanguageController {
             @PathVariable String languageCode
     ) {
         return service.restore(projectKey, languageCode, actor());
+    }
+
+    /**
+     * Hard delete (Purge)
+     * - ohne force nur möglich, wenn die Sprache bereits deleted=true ist
+     * - mit force=true auch möglich, wenn nicht deleted
+     */
+    @DeleteMapping("/{languageCode}/purge")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void purge(
+            @PathVariable String projectKey,
+            @PathVariable String languageCode,
+            @RequestParam(name = "force", defaultValue = "false") boolean force
+    ) {
+        service.purge(projectKey, languageCode, force, actor());
     }
 }
