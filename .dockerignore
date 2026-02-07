@@ -4,9 +4,12 @@
 # VCS & IDE
 /.git/
 /.idea/
+/*.iml
 
 # OS
 .DS_Store
 
 # local runtime data (mounted separately)
-/data/
+docker-data/
+data/
+.env

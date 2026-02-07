@@ -1,5 +1,6 @@
 package de.innologic.i18nservice.common.exception;
 
+import de.innologic.i18nservice.common.context.RequestContext;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.*;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -9,12 +10,25 @@ import org.springframework.web.bind.annotation.*;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
+    private ProblemDetail enrich(ProblemDetail pd) {
+        // Hilft Clients/Logs, Fehler und Requests sauber zu korrelieren
+        String requestId = RequestContext.requestId();
+        if (requestId != null) {
+            pd.setProperty("requestId", requestId);
+        }
+        String actor = RequestContext.actor();
+        if (actor != null) {
+            pd.setProperty("actor", actor);
+        }
+        return pd;
+    }
+
     @ExceptionHandler(NotFoundException.class)
     public ProblemDetail notFound(NotFoundException ex) {
         ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.NOT_FOUND);
         pd.setTitle("Not Found");
         pd.setDetail(ex.getMessage());
-        return pd;
+        return enrich(pd);
     }
 
     @ExceptionHandler(ConflictException.class)
@@ -22,7 +36,7 @@ public class ApiExceptionHandler {
         ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         pd.setTitle("Conflict");
         pd.setDetail(ex.getMessage());
-        return pd;
+        return enrich(pd);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -30,7 +44,7 @@ public class ApiExceptionHandler {
         ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
         pd.setTitle("Bad Request");
         pd.setDetail(ex.getMessage());
-        return pd;
+        return enrich(pd);
     }
 
     // DTO @Valid Fehler (z.B. Pattern, NotBlank)
@@ -45,7 +59,7 @@ public class ApiExceptionHandler {
                 .orElse("Validation failed");
 
         pd.setDetail(msg);
-        return pd;
+        return enrich(pd);
     }
 
     // Falls @Version über JPA zuschlägt (zusätzlich zu deinem expectedVersion Check)
@@ -54,7 +68,7 @@ public class ApiExceptionHandler {
         ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         pd.setTitle("Version Conflict");
         pd.setDetail("Optimistic locking conflict (concurrent update).");
-        return pd;
+        return enrich(pd);
     }
 
     // Unique-Constraints etc. (z.B. language already exists)
@@ -63,7 +77,6 @@ public class ApiExceptionHandler {
         ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         pd.setTitle("Data Integrity Violation");
         pd.setDetail("Database constraint violated (duplicate or invalid reference).");
-        return pd;
+        return enrich(pd);
     }
 }
-

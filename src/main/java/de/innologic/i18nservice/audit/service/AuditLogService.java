@@ -3,6 +3,7 @@ package de.innologic.i18nservice.audit.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import de.innologic.i18nservice.audit.model.AuditLogEntity;
 import de.innologic.i18nservice.audit.repo.AuditLogRepository;
+import de.innologic.i18nservice.common.context.RequestContext;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -18,10 +19,6 @@ public class AuditLogService {
         this.objectMapper = objectMapper;
     }
 
-    /**
-     * Audit soll Business-Operationen nicht kaputt machen.
-     * Darum: JSON-Fehler werden abgefangen und als kleiner Fallback gespeichert.
-     */
     public void log(String projectKey,
                     String actor,
                     String action,
@@ -30,18 +27,21 @@ public class AuditLogService {
                     Object details,
                     String requestId) {
 
+        String effectiveRequestId =
+                (requestId != null && !requestId.isBlank()) ? requestId : RequestContext.requestId();
+        String effectiveActor =
+                (actor != null && !actor.isBlank()) ? actor : RequestContext.actor();
+
         AuditLogEntity e = new AuditLogEntity();
         e.setOccurredAt(Instant.now());
         e.setProjectKey(projectKey);
-        e.setActor(actor);
+        e.setActor(effectiveActor);
         e.setAction(action);
         e.setEntityType(entityType);
         e.setEntityKey(entityKey);
-        e.setRequestId(requestId);
+        e.setRequestId(effectiveRequestId);
 
-        if (details != null) {
-            e.setDetailsJson(toJsonSafe(details));
-        }
+        if (details != null) e.setDetailsJson(toJsonSafe(details));
 
         repo.save(e);
     }
@@ -50,7 +50,6 @@ public class AuditLogService {
         try {
             return objectMapper.writeValueAsString(details);
         } catch (Exception ex) {
-            // super kleiner Fallback
             return "{\"_error\":\"details_not_serializable\",\"type\":\"" + details.getClass().getName() + "\"}";
         }
     }

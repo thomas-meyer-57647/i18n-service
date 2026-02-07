@@ -2,6 +2,8 @@ package de.innologic.i18nservice.bundle.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 
@@ -40,7 +42,9 @@ public class LanguageBundleEntity {
     @Column(name = "storage_path", nullable = false, length = 500)
     private String storagePath;
 
-    @Column(name = "sha256", nullable = false, length = 64)
+    // DB: CHAR(64) -> JPA/Hibernate muss ebenfalls CHAR erwarten (sonst validate-Fehler)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "sha256", nullable = false, length = 64, columnDefinition = "CHAR(64)")
     private String sha256;
 
     @Column(name = "size_bytes", nullable = false)
