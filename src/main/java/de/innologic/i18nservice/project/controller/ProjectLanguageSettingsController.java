@@ -1,5 +1,6 @@
 package de.innologic.i18nservice.project.controller;
 
+import de.innologic.i18nservice.common.context.RequestContext;
 import de.innologic.i18nservice.project.dto.LanguageSettingsResponse;
 import de.innologic.i18nservice.project.dto.UpdateLanguageSettingsRequest;
 import de.innologic.i18nservice.project.service.ProjectLanguageSettingsService;
@@ -16,10 +17,6 @@ public class ProjectLanguageSettingsController {
         this.service = service;
     }
 
-    private String actor() {
-        return "system";
-    }
-
     @GetMapping
     public LanguageSettingsResponse get(@PathVariable String projectKey) {
         return service.get(projectKey);
@@ -30,6 +27,6 @@ public class ProjectLanguageSettingsController {
             @PathVariable String projectKey,
             @Valid @RequestBody UpdateLanguageSettingsRequest req
     ) {
-        return service.update(projectKey, req, actor());
+        return service.update(projectKey, req, RequestContext.actor());
     }
 }

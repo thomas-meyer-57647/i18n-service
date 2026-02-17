@@ -2,6 +2,8 @@ package de.innologic.i18nservice.translations.controller;
 
 import de.innologic.i18nservice.translations.dto.TranslationsResponse;
 import de.innologic.i18nservice.translations.service.TranslationService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,6 +25,11 @@ public class TranslationController {
      *  - (ohne Parameter) => komplettes Bundle
      */
     @GetMapping("/{languageCode}")
+    @Operation(
+            summary = "Runtime translations",
+            description = "Requires scope i18n:read by default. Can be public when app.runtime.public=true.",
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
     public TranslationsResponse get(
             @PathVariable @NotBlank String projectKey,
             @PathVariable @NotBlank String languageCode,

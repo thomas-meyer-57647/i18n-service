@@ -17,11 +17,10 @@ import java.util.UUID;
 /**
  * Setzt pro Request:
  * - requestId (aus Header X-Request-Id oder generiert)
- * - actor (aus Header X-Actor oder default "system")
  *
  * Zusätzlich:
  * - schreibt requestId als Response Header zurück
- * - legt requestId/actor in MDC ab (für Logs)
+ * - legt requestId in MDC ab (für Logs)
  *
  * WICHTIG: Bean-Name darf nicht "requestContextFilter" heißen,
  * weil Spring Boot selbst bereits ein Bean mit diesem Namen registriert.
@@ -31,7 +30,6 @@ import java.util.UUID;
 public class RequestContextFilter extends OncePerRequestFilter {
 
     public static final String HEADER_REQUEST_ID = "X-Request-Id";
-    public static final String HEADER_ACTOR = "X-Actor";
 
     @Override
     protected void doFilterInternal(
@@ -45,14 +43,8 @@ public class RequestContextFilter extends OncePerRequestFilter {
             requestId = UUID.randomUUID().toString();
         }
 
-        String actor = trimToNull(request.getHeader(HEADER_ACTOR));
-        if (actor == null) {
-            actor = "system";
-        }
-
-        RequestContext.set(requestId, actor);
+        RequestContext.setRequestId(requestId);
         MDC.put("requestId", requestId);
-        MDC.put("actor", actor);
 
         response.setHeader(HEADER_REQUEST_ID, requestId);
 

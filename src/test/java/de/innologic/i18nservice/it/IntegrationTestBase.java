@@ -1,6 +1,7 @@
 package de.innologic.i18nservice.it;
 
 import org.junit.jupiter.api.AfterAll;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -13,6 +14,7 @@ import java.nio.file.Path;
 
 @Testcontainers
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@AutoConfigureMockMvc
 public abstract class IntegrationTestBase {
 
     @Container
@@ -41,8 +43,10 @@ public abstract class IntegrationTestBase {
         // Bundles nicht ins Repo schreiben
         r.add("app.bundle-storage.base-path", () -> storageDir.toString());
 
-        // Admin API Key Filter für Tests deaktivieren
-        r.add("app.admin.api-key", () -> "");
+        r.add("app.security.legacy-admin-api-key.enabled", () -> "false");
+        r.add("app.security.legacy-admin-api-key.value", () -> "");
+        r.add("security.jwt.issuer-uri", () -> "https://issuer.test.local");
+        r.add("security.jwt.audience", () -> "i18n-service");
     }
 
     @AfterAll

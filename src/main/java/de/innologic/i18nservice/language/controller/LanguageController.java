@@ -1,5 +1,6 @@
 package de.innologic.i18nservice.language.controller;
 
+import de.innologic.i18nservice.common.context.RequestContext;
 import de.innologic.i18nservice.language.dto.CreateLanguageRequest;
 import de.innologic.i18nservice.language.dto.LanguageResponse;
 import de.innologic.i18nservice.language.dto.UpdateLanguageRequest;
@@ -20,20 +21,13 @@ public class LanguageController {
         this.service = service;
     }
 
-    /**
-     * Später per IAM/JWT ersetzen (z.B. Subject/Username).
-     */
-    private String actor() {
-        return "system";
-    }
-
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public LanguageResponse create(
             @PathVariable String projectKey,
             @Valid @RequestBody CreateLanguageRequest req
     ) {
-        return service.create(projectKey, req, actor());
+        return service.create(projectKey, req, RequestContext.actor());
     }
 
     /**
@@ -69,7 +63,7 @@ public class LanguageController {
             @PathVariable String languageCode,
             @Valid @RequestBody UpdateLanguageRequest req
     ) {
-        return service.update(projectKey, languageCode, req, actor());
+        return service.update(projectKey, languageCode, req, RequestContext.actor());
     }
 
     /**
@@ -81,7 +75,7 @@ public class LanguageController {
             @PathVariable String projectKey,
             @PathVariable String languageCode
     ) {
-        service.softDelete(projectKey, languageCode, actor());
+        service.softDelete(projectKey, languageCode, RequestContext.actor());
     }
 
     @PostMapping("/{languageCode}/restore")
@@ -89,7 +83,7 @@ public class LanguageController {
             @PathVariable String projectKey,
             @PathVariable String languageCode
     ) {
-        return service.restore(projectKey, languageCode, actor());
+        return service.restore(projectKey, languageCode, RequestContext.actor());
     }
 
     /**
@@ -104,6 +98,6 @@ public class LanguageController {
             @PathVariable String languageCode,
             @RequestParam(name = "force", defaultValue = "false") boolean force
     ) {
-        service.purge(projectKey, languageCode, force, actor());
+        service.purge(projectKey, languageCode, force, RequestContext.actor());
     }
 }

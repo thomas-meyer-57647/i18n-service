@@ -4,6 +4,7 @@ import de.innologic.i18nservice.common.context.RequestContext;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.*;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.*;
 
@@ -77,6 +78,14 @@ public class ApiExceptionHandler {
         ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.CONFLICT);
         pd.setTitle("Data Integrity Violation");
         pd.setDetail("Database constraint violated (duplicate or invalid reference).");
+        return enrich(pd);
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    public ProblemDetail forbidden(AccessDeniedException ex) {
+        ProblemDetail pd = ProblemDetail.forStatus(HttpStatus.FORBIDDEN);
+        pd.setTitle("Forbidden");
+        pd.setDetail(ex.getMessage());
         return enrich(pd);
     }
 }

@@ -102,6 +102,26 @@ MARIADB_PASSWORD
 
 APP_BUNDLE_STORAGE_BASE_PATH (im Container z. B. /data/i18n)
 
+Security (JWT, V1.1)
+
+Standard ist Bearer JWT (Resource Server). Relevante Properties:
+
+`security.jwt.issuer-uri` oder `security.jwt.jwks-uri` (mindestens eines setzen)
+
+Optional bei `jwks-uri`: `security.jwt.issuer` (expected `iss`)
+
+`security.jwt.audience=i18n-service` (strict)
+
+`security.jwt.clock-skew-seconds=30`
+
+`app.runtime.public=false` (Default, Runtime braucht JWT + `i18n:read`)
+
+`app.security.legacy-admin-api-key.enabled=false` (Legacy optional, nicht Standard)
+
+Authorization Header Beispiel:
+
+`Authorization: Bearer <access_token>`
+
 Troubleshooting
 DB startet nicht / Healthcheck failt
 docker compose ps

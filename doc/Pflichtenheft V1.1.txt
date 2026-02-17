@@ -1,0 +1,354 @@
+Pflichtenheft – i18n Service (V1.1)
+Service-Name: 	i18n-service
+Version: 	1.1
+Stand: 	17.02.2026
+Geltungsbereich: 	Microservice zur Verwaltung von Sprachen und Übersetzungs-	Bundles pro Projekt (Mandantenkontext via projectKey). Enthält 	Admin-Endpunkte zum Anlegen von Projekten/Sprachen, 	Upload/Versionierung von Bundles sowie einen Runtime-Endpunkt 	zur Abfrage von Übersetzungen (inkl. Default- und Fallback-Logik). 
+Pflichtenheft V1.0
+
+0. Änderungshistorie (Auszug)
+V1.1 (17.02.2026)
+Security: Umstellung auf JWT (Bearer Token) über IAM/Auth-Service; optionaler X-Admin-Api-Key ist nicht mehr Standard (nur noch KANN/Legacy). 
+Pflichtenheft V1.1
+Pflichtenheft V1.0
+Actor/Request-Kontext: actor wird aus JWT (sub) abgeleitet; X-Actor entfällt als Quelle der Wahrheit. 
+Pflichtenheft V1.1
+Autorisierung: Scopes/Permissions i18n:* steuern Zugriff auf Admin-/Read-/Runtime-Endpunkte. 
+Pflichtenheft V1.1
+Tenant-Isolation: Strikte Mandantentrennung über tenant_id im Token (Model 1). 
+Pflichtenheft V1.1
+
+1. Einleitung
+1.1 Ziel
+Ziel ist die zentrale Bereitstellung von Übersetzungen für Frontends/Clients auf Basis von projectKey und languageCode. Der Service stellt eine konsistente REST-API (unter /api/v1/*) bereit, um Projekte und Sprachen zu verwalten, Sprachdateien (Bundles) hochzuladen und Übersetzungen zur Laufzeit effizient abzurufen. 
+Pflichtenheft V1.0
+
+Der Service stellt insbesondere sicher:
+Projekt-Scope als Mandanten-/Kontextgrenze via projectKey
+Sprachverwaltung (Anlegen, Lesen, Ändern, Soft-Delete, Restore, Purge)
+Bundle-Management: Upload von JSON-Bundles, Download mit ETag, Versionierung, Rollback und Diff
+Runtime-Translations: Abfrage kompletter Bundles oder Teilmengen (keys/prefix) mit Default-/Fallback-Logik
+Audit-Log für relevante Änderungen (z. B. LANGUAGE_UPDATE, BUNDLE_UPLOAD) 
+Pflichtenheft V1.0
+Security über JWT/IAM: Konsistente AuthN/AuthZ über IAM/Auth-Service (Bearer Token, Scopes, Tenant-Isolation) 
+Pflichtenheft V1.1
+Pflichtenheft V1.0
+1.2 Abgrenzung / Nicht-Ziele (MVP)
+Nicht Bestandteil des MVP:
+Unterstützung weiterer Bundle-Formate (z. B. YAML/Properties) – P0: nur JSON
+Verschachtelte JSON-Strukturen (P0: flache Map key -> string)
+Automatisches Synchronisieren/Build-Pipelines für Bundles (CI/CD) – extern erwartet
+Mehrstufige FallBack-Ketten (P0: optional genau ein Fallback-Language-Code) 
+Pflichtenheft V1.0
+Hinweis: Im Gegensatz zu V1.0 ist JWT/IAM Bestandteil der Security-Architektur (siehe Kapitel 4/9). 
+Pflichtenheft V1.1
+Pflichtenheft V1.0
+1.3 Begriffe
+projectKey: Technischer Schlüssel (Regex ^[a-z][a-z0-9-]{2,31}$) zur Identifikation eines Projekts. 
+Pflichtenheft V1.0
+ProjectScope: Projekt-Konfiguration inkl. Default- und Fallback-Sprache.
+languageCode: Sprachcode nach (vereinfachter) BCP-47-Logik, z. B. de, de-DE, zh-Hant-TW. 
+Pflichtenheft V1.0
+Bundle: Sprachdatei eines Projekts für eine Sprache. P0: JSON-Map key -> string. 
+Pflichtenheft V1.0
+
+Default Language: Sprache, die genutzt wird, wenn die angefragte Sprache nicht verfügbar/aktiv ist.
+Fallback Language: Optionale Zweitsprache, aus der fehlende Keys ergänzt werden können. 
+Pflichtenheft V1.0
+Soft-Delete: Logisches Löschen (Papierkorb). Restore möglich.
+Purge: Endgültiges Löschen (Hard delete) inkl. Bundle-Referenzen/Dateien. 
+Pflichtenheft V1.0
+JWT / Access Token: Signiertes Bearer Token vom Auth-Service; enthält Claims wie sub (User), tenant_id (Mandant), scope/scp (Berechtigungen), exp (Ablauf). 
+Pflichtenheft V1.1
+Scope/Permission: Fein granularer Zugriff, z. B. i18n:read oder i18n:admin. 
+Pflichtenheft V1.1
+Tenant (Model 1): Ein User gehört genau zu einem Tenant/Company. Tenant-Kontext kommt aus dem Token. 
+Pflichtenheft V1.1
+
+2. Rahmenbedingungen / Technologie
+2.1 Technologie-Stack (MUSS)
+Backend: Java 21 + Spring Boot
+Build: Maven
+Datenbank: MariaDB (Schema via Flyway)
+API: REST/JSON unter /api/v1/*
+OpenAPI/Swagger: springdoc (/swagger-ui.html, /v3/api-docs)
+Zeit-Standard: UTC (DB + API-Zeitstempel als ISO-8601)
+Bundle Storage: Dateisystem (konfigurierbar via app.bundle-storage.base-path bzw. APP_BUNDLE_STORAGE_BASE_PATH)
+Cache: Caffeine (konfigurierbar: max size + TTL) 
+Pflichtenheft V1.0
+2.2 Deployment / Betrieb (SOLL)
+Docker Image (Multi-Stage Build) + Docker Compose (MariaDB + Service)
+Actuator Health Endpoint: /actuator/health
+Konfiguration über Umgebungsvariablen (Port, DB, Storage-Pfad, Security-Konfig) 
+Pflichtenheft V1.0
+2.3 Security-Integration (MUSS)
+Der i18n-service ist ein Resource Server und validiert JWT Access Tokens gemäß IAM/Auth-Konvention (Issuer, Audience, Signature, Expiry). 
+Pflichtenheft V1.1
+Konfiguration (SOLL):
+security.jwt.issuer-uri oder security.jwt.jwks-uri
+security.jwt.audience = i18n-service (strict)
+optional security.jwt.clock-skew-seconds (kleiner Toleranzbereich)
+
+3. Fachliche Anforderungen
+3.1 Projektverwaltung (MUSS)
+Projekt wird durch projectKey eindeutig identifiziert.
+Projekt kann angelegt werden (POST /api/v1/projects).
+Projekte können gelistet und einzeln geladen werden (GET /api/v1/projects, GET /api/v1/projects/{projectKey}).
+Projekt-Konfiguration enthält defaultLanguageCode und optional fallbackLanguageCode (änderbar über Language-Settings-Endpunkt). 
+Pflichtenheft V1.0
+3.2 Sprache (Language) (MUSS)
+Sprache ist eindeutig pro Projekt und languageCode (BCP-47-ähnliche Normalisierung).
+CRUD: Create, Get, Update, List (active/all/deleted).
+Soft-Delete (DELETE /languages/{code}) verschiebt in Papierkorb (is_deleted=true).
+Restore (POST /languages/{code}/restore) stellt eine gelöschte Sprache wieder her.
+Purge (DELETE /languages/{code}/purge?force=...) löscht endgültig; ohne force nur wenn bereits deleted.
+Default- oder Fallback-Sprache darf nicht deaktiviert, gelöscht oder gepurged werden. 
+Pflichtenheft V1.0
+
+3.3 Spracheinstellungen (Default/Fallback) (MUSS)
+Settings sind pro Projekt gespeichert (defaultLanguageCode, fallbackLanguageCode).
+Update ist versioniert (Optimistic Lock): Request enthält expectedVersion.
+Default muss existieren und aktiv sein; Fallback (falls gesetzt) muss existieren und aktiv sein.
+GET/PUT Endpunkt: /api/v1/{projectKey}/language-settings. 
+Pflichtenheft V1.0
+3.4 Bundle Upload/Download (MUSS)
+Bundle Upload als Multipart (POST /languages/{languageCode}/bundle, Feld file).
+P0: nur .json Dateien, Inhalt muss eine flache JSON Map key -> string sein.
+Key-Validierung: ^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$.
+Beim Upload wird eine neue Bundle-Version erstellt; das „Current Bundle“ zeigt immer auf die aktive Version.
+Download des aktuellen Bundles (GET .../bundle) sowie einer konkreten Version (GET .../bundle/version/{n}).
+Downloads liefern ETag (SHA-256) und unterstützen If-None-Match (304 Not Modified). 
+Pflichtenheft V1.0
+3.5 Bundle Versionierung, Rollback und Diff (SOLL)
+Versionsliste (GET .../bundle/versions) liefert Versionen (neueste zuerst) inkl. Marker, welche Version aktuell ist.
+Meta des aktuellen Bundles (GET .../bundle/meta) und Meta einer Version (GET .../bundle/version/{n}/meta).
+Rollback (POST .../bundle/rollback/{n}) setzt das aktuelle Bundle auf eine frühere Version.
+Diff (GET .../bundle/diff?from={a}&to={b}) liefert added/removed/changed Keys. 
+Pflichtenheft V1.0
+3.6 Runtime: Übersetzungen abfragen (MUSS)
+Endpoint: GET /api/v1/{projectKey}/translations/{languageCode}.
+Ohne Parameter: komplettes Bundle (sortiert nach Key).
+Mit keys=A,B,C: nur diese Keys (max. 500). Fehlende Keys werden als Key selbst zurückgegeben.
+
+Mit prefix=HOME.: liefert alle Keys, die mit Prefix beginnen (primary + optional fallback).
+Falls angefragte Sprache nicht existiert/aktiv ist: es wird die Default-Sprache genutzt (Warnung im Response).
+Optionaler Fallback: fehlende Keys werden aus Fallback-Bundle ergänzt; wenn nicht verfügbar -> Warnung. 
+Pflichtenheft V1.0
+Security-Hinweis (V1.1): Runtime ist standardmäßig JWT-geschützt (mind. i18n:read). Optional kann Runtime per Konfiguration öffentlich gestellt werden (KANN, siehe 4.3). 
+Pflichtenheft V1.1
+3.7 Audit-Log (SOLL)
+Änderungen (Projekt, Settings, Sprachen, Bundles) schreiben Audit-Einträge.
+Audit enthält Zeitstempel, actor, action, entityType, entityKey, detailsJson, requestId.
+Liste abrufbar über GET /api/v1/{projectKey}/audit-logs?limit=... (1..500), optional filterbar nach entityType + entityKey. 
+Pflichtenheft V1.0
+3.8 Request-Kontext (SOLL)
+Pro Request wird eine requestId genutzt (Header X-Request-Id oder generiert) und als Response Header zurückgegeben.
+actor wird aus JWT abgeleitet (actor = sub). Optionaler X-Actor wird nicht als Quelle der Wahrheit verwendet.
+Diese Werte werden in Fehlerantworten und Audit verwendet. 
+Pflichtenheft V1.0
+Pflichtenheft V1.1
+3.9 Security / Autorisierung (MUSS)
+Der i18n-service übernimmt die Security-Konvention des IAM/Auth-Systems (Bearer JWT, Claims, Scopes). 
+Pflichtenheft V1.1
+Pflichtenheft V1.0
+Pflicht-Claims (MUSS):
+iss, sub, aud, exp, iat, jti, tenant_id 
+Pflichtenheft V1.1
+
+Audience (MUSS):
+aud muss i18n-service enthalten (strict). 
+Pflichtenheft V1.1
+Scopes (MUSS):
+Minimal: i18n:read, i18n:admin 
+Pflichtenheft V1.1
+Optional feinere Scopes (Backlog): i18n:audit:read, i18n:bundle:write, …
+Tenant-Isolation (MUSS, Model 1):
+Mandantenkontext wird aus tenant_id im Token abgeleitet.
+Wenn projectKey im Pfad genutzt wird, gilt verbindlich Variante A:
+projectKey entspricht dem Tenant-Schlüssel (identisch zu tenant_id)
+bei mismatch ? 403 
+Pflichtenheft V1.1
+3.10 Legacy: Minimaler Admin-Schutz via API-Key (KANN)
+Nur falls explizit gewünscht (Legacy/Dev-Fallback): X-Admin-Api-Key.
+Standard ist JWT/IAM. 
+Pflichtenheft V1.0
+Pflichtenheft V1.1
+
+4. Nicht-funktionale Anforderungen
+4.1 Performance / Skalierung (SOLL)
+Runtime-Reads sollen DB-Last reduzieren durch Bundle-Cache (Caffeine).
+Cache ist an Bundle-SHA gebunden: bei neuem Upload wird automatisch neu geladen (Invalidation).
+Konfiguration über app.bundle-cache.maximum-size und app.bundle-cache.ttl-seconds. 
+Pflichtenheft V1.0
+4.2 Robustheit (MUSS)
+Fehlerantworten sind konsistent (ProblemDetail, application/problem+json).
+Optimistic Locking für Updates (Language und Project Settings) via row_version + expectedVersion.
+Bundledateien werden bei Fehlern best-effort aufgeräumt (Upload-Rollback / Delete). 
+Pflichtenheft V1.0
+4.3 Sicherheit (MUSS/SOLL)
+JWT-Validierung ist MUSS (Signature, iss, aud, exp). 
+Pflichtenheft V1.1
+Least Privilege: Endpunkte erzwingen i18n:read bzw. i18n:admin. 
+Pflichtenheft V1.1
+Keine Binärdaten in der DB: Bundles liegen im Filesystem, DB hält nur Referenzen/Hashes. 
+Pflichtenheft V1.0
+Uploads sind größenbegrenzt (spring.servlet.multipart.max-file-size / max-request-size). 
+Pflichtenheft V1.0
+KANN: Runtime-Translations öffentlich (konfigurierbar). Wenn öffentlich: Rate-Limit/Monitoring empfohlen.
+
+5. Datenmodell (logisch)
+5.1 Tabellen (MUSS)
+i18n_project_scope (Projekt + Settings, project_key UNIQUE)
+i18n_language (Sprachen je Projekt, UNIQUE(project_key, language_code, is_deleted))
+i18n_language_bundle (aktuelles Bundle je Sprache, UNIQUE(language_id))
+i18n_language_bundle_version (Versionshistorie je Sprache, UNIQUE(language_id, bundle_version))
+i18n_audit_log (Audit-Einträge, Indizes auf project+time und entity) 
+Pflichtenheft V1.0
+5.2 Wichtige Constraints (MUSS)
+Projekt darf nur einmal existieren (uq_project_scope_key).
+Pro Projekt/LanguageCode darf es max. eine aktive (nicht gelöschte) Sprache geben.
+Bundle-Referenzen sind FK-geschützt (ON DELETE RESTRICT), daher müssen Bundles vor Sprache-Purge gelöscht werden. 
+Pflichtenheft V1.0
+
+6. REST-API Spezifikation (Basis: /api/v1)
+6.1 Security-Konvention (MUSS)
+Jeder Request (außer optional öffentliche Runtime bei Konfiguration) trägt:
+Authorization: Bearer <access_token> 
+Pflichtenheft V1.1
+6.2 Endpunkte (Auszug)
+Projekte
+POST /projects – Projekt anlegen (Scope: i18n:admin)
+GET /projects – Projekte listen (Scope: i18n:read)
+GET /projects/{projectKey} – Projekt lesen (Scope: i18n:read)
+Language Settings
+GET /{projectKey}/language-settings – Default/Fallback lesen (Scope: i18n:read)
+PUT /{projectKey}/language-settings – Default/Fallback setzen (Scope: i18n:admin)
+Sprachen
+POST /{projectKey}/languages – Sprache anlegen (Scope: i18n:admin)
+GET /{projectKey}/languages?view=active|all|deleted – Sprachen listen (Scope: i18n:read)
+GET /{projectKey}/languages/{languageCode} – Sprache lesen (Scope: i18n:read)
+PUT /{projectKey}/languages/{languageCode} – Sprache ändern (Scope: i18n:admin)
+DELETE /{projectKey}/languages/{languageCode} – Soft-Delete (Scope: i18n:admin)
+POST /{projectKey}/languages/{languageCode}/restore – Restore (Scope: i18n:admin)
+DELETE /{projectKey}/languages/{languageCode}/purge?force=false|true – Hard delete (Scope: i18n:admin)
+Bundles
+POST /{projectKey}/languages/{languageCode}/bundle – Upload (Scope: i18n:admin)
+GET /{projectKey}/languages/{languageCode}/bundle – Download aktuell (Scope: i18n:read)
+GET /{projectKey}/languages/{languageCode}/bundle/version/{n} – Download Version (Scope: i18n:read)
+GET /.../meta, GET /.../versions, GET /.../diff (Scope: i18n:read)
+POST /.../rollback/{n}, DELETE /.../bundle (Scope: i18n:admin)
+Runtime Translations
+GET /{projectKey}/translations/{languageCode} – Bundle/Keys/Prefix abrufen
+Scope: i18n:read (Standard)
+KANN öffentlich bei app.runtime.public=true (dann ohne JWT) 
+Pflichtenheft V1.0
+Audit
+GET /{projectKey}/audit-logs?limit=... – Auditliste (Scope: i18n:admin oder optional i18n:audit:read)
+
+7. DTOs / Beispiel-Payloads
+(Unverändert zu V1.0, ergänzt um Security-Header)
+7.1 Projekt: Create Request
+{ "projectKey": "portal", "displayName": "Portal" } 
+Pflichtenheft V1.0
+7.2 Sprache: Create Request
+{ "name": "Deutsch", "languageCode": "de-DE" } 
+Pflichtenheft V1.0
+7.3 Sprache: Update Request (Optimistic Lock)
+{ "name": "Deutsch (formal)", "active": true, "expectedVersion": 0 } 
+Pflichtenheft V1.0
+7.4 Language Settings: Update Request
+{ "defaultLanguageCode": "de-DE", "fallbackLanguageCode": "en-GB", "expectedVersion": 0 } 
+Pflichtenheft V1.0
+7.5 Bundle: Beispiel JSON Datei
+{ "HOME.TITLE": "Willkommen", "HOME.LOGIN": "Anmelden", "COMMON.CANCEL": "Abbrechen" } 
+Pflichtenheft V1.0
+
+8. Caching (SOLL)
+Ziel: Reduktion von DB-Last und Latenz bei häufigen Runtime-Reads (/translations/*).
+Pro projectKey und languageCode wird das Bundle als Map im Speicher gehalten.
+Cache-Entry ist an sha256 gebunden (ändert sich das Bundle, wird neu geladen).
+Standard: TTL 300 Sekunden (konfigurierbar), Max Entries 2000 (konfigurierbar).
+Invalidation (MUSS): nach Upload/Rollback/Delete/Purge wird betroffener Cache invalidiert. 
+Pflichtenheft V1.0
+
+9. Fehlerformat (SOLL)
+9.1 Einheitliches ProblemDetail
+Der Service nutzt Spring ProblemDetail als Fehlerformat (Content-Type: application/problem+json). Typische Felder:
+status, title, detail
+zusätzliche Properties: requestId, actor 
+Pflichtenheft V1.0
+9.2 Typische HTTP-Statuscodes
+400 Bad Request (Validation/IllegalArgumentException)
+404 Not Found (Projekt/Sprache/Bundle nicht gefunden)
+409 Conflict (Version conflict, Duplicate, Concurrent upload)
+401 Unauthorized (fehlendes/ungültiges/abgelaufenes JWT; falsches aud/iss) 
+Pflichtenheft V1.1
+403 Forbidden (Tenant-Mismatch; fehlender Scope) 
+Pflichtenheft V1.1
+
+10. Pagination & Sort (SOLL)
+MVP ohne allgemeines Paging.
+/audit-logs bietet limit (1..500) und sortiert absteigend nach occurredAt.
+Sprachen/Projekte werden serverseitig stabil sortiert (z. B. nach languageCode). 
+Pflichtenheft V1.0
+11. Abnahmekriterien (Auszug)
+JWT-Validierung (Signature, iss, aud, exp) funktioniert; Requests ohne gültiges Token werden abgewiesen (401). 
+Pflichtenheft V1.1
+projectKey (Tenant) muss Token-tenant_id entsprechen (403 bei mismatch). 
+Pflichtenheft V1.1
+Scopes werden erzwungen: i18n:read vs. i18n:admin. 
+Pflichtenheft V1.1
+Projekt kann angelegt und gelesen werden; projectKey wird validiert. 
+Pflichtenheft V1.0
+Sprachen CRUD + Soft-Delete/Restore/Purge inkl. Constraints für Default/Fallback. 
+Pflichtenheft V1.0
+Bundles Upload/Download als JSON; ETag/If-None-Match liefert 304 wenn passend. 
+Pflichtenheft V1.0
+Runtime-Translations full/keys/prefix; Default-/Fallback-Logik; max. 500 Keys. 
+Pflichtenheft V1.0
+Audit-Log wird geschrieben und kann gefiltert abgerufen werden. 
+Pflichtenheft V1.0
+Docker Compose Start funktioniert (MariaDB + Service), Health Endpoint erreichbar. 
+Pflichtenheft V1.0
+
+12. MUSS / SOLL / KANN Übersicht
+Bereich
+MUSS
+SOLL
+KANN
+Projekt
+Create/Get/List
+–
+–
+Sprachen
+CRUD + Soft-Delete/Restore/Purge
+Views (active/all/deleted)
+–
+Language Settings
+Default/Fallback + Optimistic Lock
+–
+–
+Bundles
+Upload/Download JSON
+Versioning/Rollback/Diff
+Weitere Formate
+Runtime Translations
+full/keys/prefix + Default/Fallback
+Caching
+„public runtime“ per Flag
+Audit
+–
+Audit Log + Filter
+–
+Security
+JWT (Bearer), iss/aud/exp, Scopes, Tenant-Isolation
+–
+API-Key Filter (Legacy)
+
+13. Backlog / optionale Erweiterungen (Auszug)
+Feinere Scopes: i18n:audit:read, i18n:bundle:write, i18n:settings:write
+Mehrstufige Fallback-Ketten und Regional-Fallback (z. B. de-CH -> de-DE -> en-GB)
+API für „Missing Keys“ Reporting/Export (QA für Übersetzungen)
+Streaming/Compression für sehr große Bundles (ETag + gzip)
+Aufräum-Jobs für nicht mehr referenzierte Bundle-Dateien (Storage Hygiene) 
+Pflichtenheft V1.0
+

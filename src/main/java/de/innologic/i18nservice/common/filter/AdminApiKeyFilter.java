@@ -21,7 +21,8 @@ import java.io.IOException;
 /**
  * Minimaler Schutz für Admin-Endpunkte, wenn du (noch) kein Spring Security / IAM angebunden hast.
  *
- * Aktiviert sich nur, wenn {@code app.admin.api-key} gesetzt ist.
+ * Aktiviert sich nur, wenn {@code app.security.legacy-admin-api-key.enabled=true}
+ * und ein Key gesetzt ist.
  *
  * Offene Endpunkte:
  * - Runtime: {@code /api/v1/{projectKey}/translations/{languageCode}}
@@ -38,13 +39,16 @@ public class AdminApiKeyFilter extends OncePerRequestFilter {
 
     public static final String HEADER_ADMIN_API_KEY = "X-Admin-Api-Key";
 
+    private final boolean legacyEnabled;
     private final String adminApiKey;
     private final ObjectMapper objectMapper;
 
     public AdminApiKeyFilter(
-            @Value("${app.admin.api-key:}") String adminApiKey,
+            @Value("${app.security.legacy-admin-api-key.enabled:false}") boolean legacyEnabled,
+            @Value("${app.security.legacy-admin-api-key.value:}") String adminApiKey,
             ObjectMapper objectMapper
     ) {
+        this.legacyEnabled = legacyEnabled;
         this.adminApiKey = adminApiKey;
         this.objectMapper = objectMapper;
     }
@@ -52,7 +56,7 @@ public class AdminApiKeyFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         // disabled by default
-        if (adminApiKey == null || adminApiKey.isBlank()) {
+        if (!legacyEnabled || adminApiKey == null || adminApiKey.isBlank()) {
             return true;
         }
 

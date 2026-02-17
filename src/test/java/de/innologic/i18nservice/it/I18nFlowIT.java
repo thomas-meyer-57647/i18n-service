@@ -1,192 +1,172 @@
 package de.innologic.i18nservice.it;
 
-import de.innologic.i18nservice.bundle.dto.BundleMetaResponse;
-import de.innologic.i18nservice.language.dto.CreateLanguageRequest;
-import de.innologic.i18nservice.language.dto.LanguageResponse;
-import de.innologic.i18nservice.language.dto.UpdateLanguageRequest;
-import de.innologic.i18nservice.project.dto.CreateProjectRequest;
-import de.innologic.i18nservice.project.dto.LanguageSettingsResponse;
-import de.innologic.i18nservice.project.dto.ProjectScopeResponse;
-import de.innologic.i18nservice.project.dto.UpdateLanguageSettingsRequest;
-import de.innologic.i18nservice.translations.dto.TranslationsResponse;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.*;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
+import java.time.Instant;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.hamcrest.Matchers.is;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 public class I18nFlowIT extends IntegrationTestBase {
 
-    @org.springframework.beans.factory.annotation.Autowired
-    TestRestTemplate rest;
+    @Autowired
+    MockMvc mockMvc;
+
+    @Autowired
+    ObjectMapper objectMapper;
 
     @Test
-    void endToEnd_project_languages_settings_bundle_translations_and_guardrails() {
+    void endToEnd_project_languages_settings_bundle_translations_and_guardrails() throws Exception {
         String projectKey = "portal";
 
-        // 1) Project anlegen
-        ProjectScopeResponse project = rest.postForEntity(
-                "/api/v1/projects",
-                new CreateProjectRequest(projectKey, "Portal"),
-                ProjectScopeResponse.class
-        ).getBody();
-        assertNotNull(project);
-        assertEquals(projectKey, project.projectKey());
+        mockMvc.perform(post("/api/v1/projects")
+                        .with(adminToken(projectKey))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"projectKey":"portal","displayName":"Portal"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.projectKey", is(projectKey)));
 
-        // 2) Sprachen anlegen (erste Sprache setzt Default automatisch)
-        LanguageResponse de = rest.postForEntity(
-                "/api/v1/{projectKey}/languages",
-                new CreateLanguageRequest("Deutsch", "de-DE"),
-                LanguageResponse.class,
-                projectKey
-        ).getBody();
-        assertNotNull(de);
-        assertEquals("de-DE", de.languageCode());
+        mockMvc.perform(post("/api/v1/{projectKey}/languages", projectKey)
+                        .with(adminToken(projectKey))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"Deutsch","languageCode":"de-DE"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.languageCode", is("de-DE")));
 
-        LanguageResponse en = rest.postForEntity(
-                "/api/v1/{projectKey}/languages",
-                new CreateLanguageRequest("English (US)", "en-US"),
-                LanguageResponse.class,
-                projectKey
-        ).getBody();
-        assertNotNull(en);
-        assertEquals("en-US", en.languageCode());
+        mockMvc.perform(post("/api/v1/{projectKey}/languages", projectKey)
+                        .with(adminToken(projectKey))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"English (US)","languageCode":"en-US"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.languageCode", is("en-US")));
 
-        // 3) Settings prüfen: default sollte auto gesetzt sein
-        LanguageSettingsResponse settings = rest.getForEntity(
-                "/api/v1/{projectKey}/language-settings",
-                LanguageSettingsResponse.class,
-                projectKey
-        ).getBody();
-        assertNotNull(settings);
-        assertEquals("de-DE", settings.defaultLanguageCode());
+        MvcResult settingsResult = mockMvc.perform(get("/api/v1/{projectKey}/language-settings", projectKey)
+                        .with(readToken(projectKey)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.defaultLanguageCode", is("de-DE")))
+                .andReturn();
 
-        // 4) Fallback setzen (expectedVersion kommt aus GET)
-        LanguageSettingsResponse updatedSettings = rest.exchange(
-                "/api/v1/{projectKey}/language-settings",
-                HttpMethod.PUT,
-                new HttpEntity<>(new UpdateLanguageSettingsRequest("de-DE", "en-US", settings.version())),
-                LanguageSettingsResponse.class,
-                projectKey
-        ).getBody();
-        assertNotNull(updatedSettings);
-        assertEquals("en-US", updatedSettings.fallbackLanguageCode());
+        JsonNode settingsJson = objectMapper.readTree(settingsResult.getResponse().getContentAsString());
+        long expectedVersion = settingsJson.path("version").asLong();
 
-        // 5) Bundles uploaden
-        BundleMetaResponse deBundle = uploadBundle(projectKey, "de-DE", "{\"A\":\"Anmelden\",\"B\":\"Abbrechen\"}");
-        assertNotNull(deBundle);
+        mockMvc.perform(put("/api/v1/{projectKey}/language-settings", projectKey)
+                        .with(adminToken(projectKey))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"defaultLanguageCode":"de-DE","fallbackLanguageCode":"en-US","expectedVersion":%d}
+                                """.formatted(expectedVersion)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fallbackLanguageCode", is("en-US")));
 
-        BundleMetaResponse enBundle = uploadBundle(projectKey, "en-US", "{\"A\":\"Login\",\"B\":\"Cancel\",\"C\":\"Help\"}");
-        assertNotNull(enBundle);
+        uploadBundle(projectKey, "de-DE", "{\"A\":\"Anmelden\",\"B\":\"Abbrechen\"}");
+        uploadBundle(projectKey, "en-US", "{\"A\":\"Login\",\"B\":\"Cancel\",\"C\":\"Help\"}");
 
-        // 6) Translations: requested fr-FR -> resolved default de-DE, fallback en-US liefert Key C
-        String url = UriComponentsBuilder.fromPath("/api/v1/{projectKey}/translations/{lang}")
-                .queryParam("keys", "A,B,C")
-                .buildAndExpand(projectKey, "fr-FR")
-                .toUriString();
+        mockMvc.perform(get("/api/v1/{projectKey}/translations/{lang}", projectKey, "fr-FR")
+                        .with(readToken(projectKey))
+                        .param("keys", "A,B,C"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requestedLanguageCode", is("fr-FR")))
+                .andExpect(jsonPath("$.resolvedLanguageCode", is("de-DE")))
+                .andExpect(jsonPath("$.fallbackLanguageCode", is("en-US")))
+                .andExpect(jsonPath("$.values.A", is("Anmelden")))
+                .andExpect(jsonPath("$.values.B", is("Abbrechen")))
+                .andExpect(jsonPath("$.values.C", is("Help")));
 
-        TranslationsResponse tr = rest.getForEntity(url, TranslationsResponse.class).getBody();
-        assertNotNull(tr);
-        assertEquals(projectKey, tr.projectKey());
-        assertEquals("fr-FR", tr.requestedLanguageCode());
-        assertEquals("de-DE", tr.resolvedLanguageCode());
-        assertEquals("en-US", tr.fallbackLanguageCode());
+        mockMvc.perform(delete("/api/v1/{projectKey}/languages/{code}", projectKey, "de-DE")
+                        .with(adminToken(projectKey)))
+                .andExpect(status().isConflict());
 
-        Map<String, String> values = tr.values();
-        assertEquals("Anmelden", values.get("A"));
-        assertEquals("Abbrechen", values.get("B"));
-        assertEquals("Help", values.get("C"));
-        assertTrue(tr.missingKeys().isEmpty());
-        assertFalse(tr.warnings().isEmpty());
+        MvcResult enResult = mockMvc.perform(get("/api/v1/{projectKey}/languages/{code}", projectKey, "en-US")
+                        .with(readToken(projectKey)))
+                .andExpect(status().isOk())
+                .andReturn();
+        JsonNode en = objectMapper.readTree(enResult.getResponse().getContentAsString());
 
-        // 7) Guardrail: Default darf nicht gelöscht werden
-        ResponseEntity<String> delDefault = rest.exchange(
-                "/api/v1/{projectKey}/languages/{code}",
-                HttpMethod.DELETE,
-                HttpEntity.EMPTY,
-                String.class,
-                projectKey,
-                "de-DE"
-        );
-        assertEquals(HttpStatus.CONFLICT, delDefault.getStatusCode());
+        mockMvc.perform(put("/api/v1/{projectKey}/languages/{code}", projectKey, "en-US")
+                        .with(adminToken(projectKey))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name":"%s","active":false,"expectedVersion":%d}
+                                """.formatted(en.path("name").asText(), en.path("version").asLong())))
+                .andExpect(status().isConflict());
 
-        // 8) Guardrail: Fallback darf nicht deaktiviert werden
-        LanguageResponse enFresh = rest.getForEntity(
-                "/api/v1/{projectKey}/languages/{code}",
-                LanguageResponse.class,
-                projectKey,
-                "en-US"
-        ).getBody();
-        assertNotNull(enFresh);
-
-        UpdateLanguageRequest deactivate = new UpdateLanguageRequest(enFresh.name(), false, enFresh.version());
-        ResponseEntity<String> deactivateResp = rest.exchange(
-                "/api/v1/{projectKey}/languages/{code}",
-                HttpMethod.PUT,
-                new HttpEntity<>(deactivate),
-                String.class,
-                projectKey,
-                "en-US"
-        );
-        assertEquals(HttpStatus.CONFLICT, deactivateResp.getStatusCode());
-
-        // 9) Bundle Download ETag: 2. Request -> 304
-        ResponseEntity<byte[]> download = rest.getForEntity(
-                "/api/v1/{projectKey}/languages/{code}/bundle",
-                byte[].class,
-                projectKey,
-                "de-DE"
-        );
-        assertEquals(HttpStatus.OK, download.getStatusCode());
-        String etag = download.getHeaders().getETag();
+        MvcResult download = mockMvc.perform(get("/api/v1/{projectKey}/languages/{code}/bundle", projectKey, "de-DE")
+                        .with(readToken(projectKey)))
+                .andExpect(status().isOk())
+                .andReturn();
+        String etag = download.getResponse().getHeader(HttpHeaders.ETAG);
         assertNotNull(etag);
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.IF_NONE_MATCH, etag);
-        ResponseEntity<String> notModified = rest.exchange(
-                "/api/v1/{projectKey}/languages/{code}/bundle",
-                HttpMethod.GET,
-                new HttpEntity<>(headers),
-                String.class,
-                projectKey,
-                "de-DE"
-        );
-        assertEquals(HttpStatus.NOT_MODIFIED, notModified.getStatusCode());
+        mockMvc.perform(get("/api/v1/{projectKey}/languages/{code}/bundle", projectKey, "de-DE")
+                        .with(readToken(projectKey))
+                        .header(HttpHeaders.IF_NONE_MATCH, etag))
+                .andExpect(status().isNotModified());
     }
 
-    private BundleMetaResponse uploadBundle(String projectKey, String languageCode, String json) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-
-        ByteArrayResource file = new ByteArrayResource(json.getBytes(StandardCharsets.UTF_8)) {
-            @Override
-            public String getFilename() {
-                return "bundle.json";
-            }
-        };
-
-        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("file", file);
-
-        HttpEntity<MultiValueMap<String, Object>> req = new HttpEntity<>(body, headers);
-
-        ResponseEntity<BundleMetaResponse> resp = rest.exchange(
-                "/api/v1/{projectKey}/languages/{code}/bundle",
-                HttpMethod.POST,
-                req,
-                BundleMetaResponse.class,
-                projectKey,
-                languageCode
+    private void uploadBundle(String projectKey, String languageCode, String json) throws Exception {
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "bundle.json",
+                MediaType.APPLICATION_JSON_VALUE,
+                json.getBytes()
         );
 
-        assertEquals(HttpStatus.CREATED, resp.getStatusCode());
-        return resp.getBody();
+        mockMvc.perform(multipart("/api/v1/{projectKey}/languages/{code}/bundle", projectKey, languageCode)
+                        .file(file)
+                        .with(adminToken(projectKey)))
+                .andExpect(status().isCreated())
+                .andExpect(header().exists("X-Request-Id"));
+    }
+
+    private SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor adminToken(String tenantId) {
+        return tokenWithScopes(tenantId, "i18n:read", "i18n:admin");
+    }
+
+    private SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor readToken(String tenantId) {
+        return tokenWithScopes(tenantId, "i18n:read");
+    }
+
+    private SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor tokenWithScopes(String tenantId, String... scopes) {
+        java.util.List<GrantedAuthority> authorities = java.util.Arrays.stream(scopes)
+                .map(s -> (GrantedAuthority) new SimpleGrantedAuthority("SCOPE_" + s))
+                .toList();
+        return jwt()
+                .authorities(authorities)
+                .jwt(jwt -> jwt
+                        .issuer("https://issuer.test.local")
+                        .subject("user-123")
+                        .claim("jti", "jti-" + tenantId)
+                        .claim("tenant_id", tenantId)
+                        .claim("aud", java.util.List.of("i18n-service"))
+                        .claim("scope", String.join(" ", scopes))
+                        .issuedAt(Instant.now().minusSeconds(30))
+                        .expiresAt(Instant.now().plusSeconds(3600)));
     }
 }

@@ -10,6 +10,7 @@ import de.innologic.i18nservice.project.model.ProjectScopeEntity;
 import de.innologic.i18nservice.project.repo.ProjectScopeRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.AccessDeniedException;
 
 import java.util.List;
 import java.util.Map;
@@ -26,9 +27,10 @@ public class ProjectScopeService {
     }
 
     @Transactional
-    public ProjectScopeResponse create(CreateProjectRequest req, String actor) {
+    public ProjectScopeResponse create(CreateProjectRequest req, String actor, String tenantId) {
         String projectKey = req.projectKey();
         ProjectKeyValidator.validate(projectKey);
+        requireTenantBoundProject(projectKey, tenantId);
 
         if (repo.existsByProjectKey(projectKey)) {
             throw new ConflictException("Project already exists: " + projectKey);
@@ -52,8 +54,11 @@ public class ProjectScopeService {
     }
 
     @Transactional(readOnly = true)
-    public List<ProjectScopeResponse> list() {
-        return repo.findAll().stream()
+    public List<ProjectScopeResponse> list(String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            throw new AccessDeniedException("Missing tenant_id in JWT");
+        }
+        return repo.findByProjectKeyOrderByProjectKeyAsc(tenantId).stream()
                 .map(ProjectScopeResponse::from)
                 .toList();
     }
@@ -72,6 +77,15 @@ public class ProjectScopeService {
         if (s == null) return null;
         String t = s.trim();
         return t.isBlank() ? null : t;
+    }
+
+    private void requireTenantBoundProject(String projectKey, String tenantId) {
+        if (tenantId == null || tenantId.isBlank()) {
+            throw new AccessDeniedException("Missing tenant_id in JWT");
+        }
+        if (!tenantId.equals(projectKey)) {
+            throw new AccessDeniedException("projectKey must match tenant_id");
+        }
     }
 
     private void auditSafe(String projectKey,

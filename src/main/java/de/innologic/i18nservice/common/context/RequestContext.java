@@ -10,7 +10,20 @@ public final class RequestContext {
 
     public static void set(String requestId, String actor) {
         String rid = (requestId != null && !requestId.isBlank()) ? requestId : UUID.randomUUID().toString();
-        String act = (actor != null && !actor.isBlank()) ? actor : "system";
+        String act = (actor != null && !actor.isBlank()) ? actor : null;
+        CTX.set(new Ctx(rid, act));
+    }
+
+    public static void setRequestId(String requestId) {
+        Ctx current = CTX.get();
+        String rid = (requestId != null && !requestId.isBlank()) ? requestId : UUID.randomUUID().toString();
+        CTX.set(new Ctx(rid, current != null ? current.actor : null));
+    }
+
+    public static void setActor(String actor) {
+        Ctx current = CTX.get();
+        String rid = current != null ? current.requestId : UUID.randomUUID().toString();
+        String act = (actor != null && !actor.isBlank()) ? actor : null;
         CTX.set(new Ctx(rid, act));
     }
 
@@ -21,7 +34,7 @@ public final class RequestContext {
 
     public static String actor() {
         Ctx c = CTX.get();
-        return c != null ? c.actor : "system";
+        return c != null ? c.actor : null;
     }
 
     public static void clear() {

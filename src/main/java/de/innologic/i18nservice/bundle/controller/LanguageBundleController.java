@@ -5,6 +5,7 @@ import de.innologic.i18nservice.bundle.dto.BundleMetaResponse;
 import de.innologic.i18nservice.bundle.dto.BundleVersionResponse;
 import de.innologic.i18nservice.bundle.service.LanguageBundleService;
 import de.innologic.i18nservice.bundle.service.LanguageBundleService.StoredFile;
+import de.innologic.i18nservice.common.context.RequestContext;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -26,14 +27,6 @@ public class LanguageBundleController {
         this.service = service;
     }
 
-    /**
-     * Später (IAM/JWT) ziehst du den Actor aus dem SecurityContext.
-     * Für P0 reicht ein Platzhalter.
-     */
-    private String actor() {
-        return "system";
-    }
-
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public BundleMetaResponse upload(
@@ -41,7 +34,7 @@ public class LanguageBundleController {
             @PathVariable @NotBlank String languageCode,
             @RequestPart("file") @NotNull MultipartFile file
     ) {
-        return service.upload(projectKey, languageCode, file, actor());
+        return service.upload(projectKey, languageCode, file, RequestContext.actor());
     }
 
     /**
@@ -111,7 +104,7 @@ public class LanguageBundleController {
             @PathVariable @NotBlank String languageCode,
             @PathVariable("version") @Min(1) int version
     ) {
-        return service.rollback(projectKey, languageCode, version, actor());
+        return service.rollback(projectKey, languageCode, version, RequestContext.actor());
     }
 
     /**
@@ -133,7 +126,7 @@ public class LanguageBundleController {
             @PathVariable @NotBlank String projectKey,
             @PathVariable @NotBlank String languageCode
     ) {
-        service.deleteBundle(projectKey, languageCode, actor());
+        service.deleteBundle(projectKey, languageCode, RequestContext.actor());
     }
 
     private ResponseEntity<Resource> buildDownloadResponse(StoredFile stored, String ifNoneMatch) {
