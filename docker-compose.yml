@@ -9,7 +9,7 @@ services:
       MARIADB_PASSWORD: ${MARIADB_PASSWORD:-i18npass}
       TZ: ${APP_TZ:-UTC}
     ports:
-      - "${DB_PORT:-3306}:3306"
+      - "${I18N_DB_PORT:-3306}:3306"
     volumes:
       - mariadb_data:/var/lib/mysql
     healthcheck:
@@ -24,14 +24,14 @@ services:
       dockerfile: Dockerfile
     container_name: i18n-service
     environment:
-      DB_HOST: mariadb
-      DB_PORT: 3306
-      DB_NAME: ${DB_NAME:-${MARIADB_DATABASE:-i18n}}
-      DB_USER: ${DB_USER:-${MARIADB_USER:-i18n}}
-      DB_PASSWORD: ${DB_PASSWORD:-${MARIADB_PASSWORD:-i18npass}}
+      I18N_DB_HOST: mariadb
+      I18N_DB_PORT: 3306
+      I18N_DB_NAME: ${I18N_DB_NAME:-${MARIADB_DATABASE:-i18n}}
+      I18N_DB_USER: ${I18N_DB_USER:-${MARIADB_USER:-i18n}}
+      I18N_DB_PASSWORD: ${I18N_DB_PASSWORD:-${MARIADB_PASSWORD:-i18npass}}
 
       APP_BUNDLE_STORAGE_BASE_PATH: ${APP_BUNDLE_STORAGE_BASE_PATH:-/data/i18n}
-      SERVER_PORT: 8080
+      I18NPORT: 8080
       TZ: ${APP_TZ:-UTC}
     ports:
       - "${APP_PORT:-8080}:8080"

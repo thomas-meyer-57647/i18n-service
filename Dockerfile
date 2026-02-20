@@ -26,7 +26,7 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar /app/app.jar
 
 ENV APP_BUNDLE_STORAGE_BASE_PATH=/data/i18n \
-    SERVER_PORT=8080
+    I18NPORT=8080
 
 EXPOSE 8080
 

@@ -90,7 +90,17 @@ Die wichtigsten Werte kommen aus .env (siehe .env.example), typischerweise:
 
 APP_PORT (z. B. 8080)
 
-DB_PORT (z. B. 3306)
+I18NPORT (z. B. 8080)
+
+I18N_DB_HOST (z. B. localhost oder mariadb)
+
+I18N_DB_PORT (z. B. 3306)
+
+I18N_DB_NAME (z. B. i18n)
+
+I18N_DB_USER
+
+I18N_DB_PASSWORD
 
 MARIADB_ROOT_PASSWORD
 
@@ -101,6 +111,14 @@ MARIADB_USER
 MARIADB_PASSWORD
 
 APP_BUNDLE_STORAGE_BASE_PATH (im Container z. B. /data/i18n)
+
+IntelliJ Run Configuration
+
+Beispiel-ENV:
+
+`I18N_DB_HOST=localhost;I18N_DB_PORT=3306;I18N_DB_NAME=i18n;I18N_DB_USER=root;I18N_DB_PASSWORD=;I18NPORT=8080`
+
+Hinweis: `Include system environment variables` kann aktiviert bleiben, da die Variablen service-spezifisch sind.
 
 Security (JWT, V1.1)
 
