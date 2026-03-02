@@ -1,5 +1,6 @@
 package de.innologic.i18nservice.it;
 
+import de.innologic.i18nservice.common.filter.RequestContextFilter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -11,10 +12,14 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.Instant;
 
+import static org.hamcrest.Matchers.blankString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 public class SecurityIT extends IntegrationTestBase {
@@ -57,10 +62,52 @@ public class SecurityIT extends IntegrationTestBase {
     }
 
     @Test
+    void requestWithCorrelationId_reusesCorrelationForResponseHeader() throws Exception {
+        String correlationId = "corr-id-123";
+        mockMvc.perform(get("/api/v1/projects")
+                        .header(RequestContextFilter.HEADER_CORRELATION_ID, correlationId)
+                        .with(readToken("portal")))
+                .andExpect(status().isOk())
+                .andExpect(header().string(RequestContextFilter.HEADER_REQUEST_ID, correlationId));
+    }
+
+    @Test
+    void requestWithoutIds_generatesNonEmptyRequestIdHeader() throws Exception {
+        mockMvc.perform(get("/api/v1/projects")
+                        .with(readToken("portal")))
+                .andExpect(status().isOk())
+                .andExpect(header().string(RequestContextFilter.HEADER_REQUEST_ID, not(blankString())));
+    }
+
+    @Test
+    void tokenWithScpReadOnly_allowsReadEndpoint() throws Exception {
+        mockMvc.perform(get("/api/v1/projects")
+                        .with(tokenWithScp("portal", "i18n:read")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void tokenWithScpAdminWithoutRead_deniesReadEndpoint() throws Exception {
+        mockMvc.perform(get("/api/v1/projects")
+                        .with(tokenWithScp("portal", "i18n:admin")))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void tenantMismatch_returns403() throws Exception {
         mockMvc.perform(get("/api/v1/{projectKey}/language-settings", "portal")
                         .with(readToken("another-tenant")))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.errorCode").value("TENANT_MISMATCH"));
+    }
+
+    @Test
+    void tenantMatch_allowsAccess() throws Exception {
+        setupRuntimeData("portal");
+
+        mockMvc.perform(get("/api/v1/{projectKey}/language-settings", "portal")
+                        .with(readToken("portal")))
+                .andExpect(status().isOk());
     }
 
     @Test
@@ -122,6 +169,20 @@ public class SecurityIT extends IntegrationTestBase {
                         .claim("tenant_id", tenantId)
                         .claim("aud", java.util.List.of("i18n-service"))
                         .claim("scope", String.join(" ", scopes))
+                        .claim("scp", java.util.Arrays.asList(scopes))
+                        .issuedAt(Instant.now().minusSeconds(30))
+                        .expiresAt(Instant.now().plusSeconds(3600)));
+    }
+
+    private SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor tokenWithScp(String tenantId, String... scopes) {
+        return jwt()
+                .jwt(jwt -> jwt
+                        .issuer("https://issuer.test.local")
+                        .subject("user-123")
+                        .claim("jti", "jti-" + tenantId)
+                        .claim("tenant_id", tenantId)
+                        .claim("aud", java.util.List.of("i18n-service"))
+                        .claim("scp", java.util.Arrays.asList(scopes))
                         .issuedAt(Instant.now().minusSeconds(30))
                         .expiresAt(Instant.now().plusSeconds(3600)));
     }

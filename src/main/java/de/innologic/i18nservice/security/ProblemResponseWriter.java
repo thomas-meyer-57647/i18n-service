@@ -21,17 +21,24 @@ public class ProblemResponseWriter {
     }
 
     public void unauthorized(HttpServletResponse response, String detail) throws IOException {
-        write(response, HttpStatus.UNAUTHORIZED, "Unauthorized", detail);
+        write(response, HttpStatus.UNAUTHORIZED, "Unauthorized", detail, null);
     }
 
     public void forbidden(HttpServletResponse response, String detail) throws IOException {
-        write(response, HttpStatus.FORBIDDEN, "Forbidden", detail);
+        write(response, HttpStatus.FORBIDDEN, "Forbidden", detail, null);
     }
 
-    private void write(HttpServletResponse response, HttpStatus status, String title, String detail) throws IOException {
+    public void forbidden(HttpServletResponse response, String detail, String errorCode) throws IOException {
+        write(response, HttpStatus.FORBIDDEN, "Forbidden", detail, errorCode);
+    }
+
+    private void write(HttpServletResponse response, HttpStatus status, String title, String detail, String errorCode) throws IOException {
         ProblemDetail pd = ProblemDetail.forStatus(status);
         pd.setTitle(title);
         pd.setDetail(detail);
+        if (errorCode != null) {
+            pd.setProperty("errorCode", errorCode);
+        }
 
         String requestId = RequestContext.requestId();
         if (requestId != null) {

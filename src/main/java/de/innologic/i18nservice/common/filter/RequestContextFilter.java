@@ -30,6 +30,8 @@ import java.util.UUID;
 public class RequestContextFilter extends OncePerRequestFilter {
 
     public static final String HEADER_REQUEST_ID = "X-Request-Id";
+    public static final String HEADER_CORRELATION_ID = "X-Correlation-Id";
+    public static final String HEADER_TRACE_PARENT = "traceparent";
 
     @Override
     protected void doFilterInternal(
@@ -38,10 +40,7 @@ public class RequestContextFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
-        String requestId = trimToNull(request.getHeader(HEADER_REQUEST_ID));
-        if (requestId == null) {
-            requestId = UUID.randomUUID().toString();
-        }
+        String requestId = determineRequestId(request);
 
         RequestContext.setRequestId(requestId);
         MDC.put("requestId", requestId);
@@ -57,8 +56,46 @@ public class RequestContextFilter extends OncePerRequestFilter {
         }
     }
 
+    private String determineRequestId(HttpServletRequest request) {
+        String requestId = trimToNull(request.getHeader(HEADER_REQUEST_ID));
+        if (requestId != null) {
+            return requestId;
+        }
+        requestId = trimToNull(request.getHeader(HEADER_CORRELATION_ID));
+        if (requestId != null) {
+            return requestId;
+        }
+        String traceParent = trimToNull(request.getHeader(HEADER_TRACE_PARENT));
+        if (traceParent != null) {
+            return extractTraceId(traceParent);
+        }
+        return UUID.randomUUID().toString();
+    }
+
+    private String extractTraceId(String traceParent) {
+        String[] parts = traceParent.split("-");
+        if (parts.length >= 2 && isTraceId(parts[1])) {
+            return parts[1];
+        }
+        return traceParent;
+    }
+
+    private boolean isTraceId(String value) {
+        if (value.length() != 32) {
+            return false;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            if (!Character.isDigit(value.charAt(i)) && (Character.toLowerCase(value.charAt(i)) < 'a' || Character.toLowerCase(value.charAt(i)) > 'f')) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private String trimToNull(String s) {
-        if (s == null) return null;
+        if (s == null) {
+            return null;
+        }
         String t = s.trim();
         return t.isEmpty() ? null : t;
     }

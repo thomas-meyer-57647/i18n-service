@@ -22,6 +22,8 @@ public class TenantIsolationFilter extends OncePerRequestFilter {
     private final ProblemResponseWriter problemResponseWriter;
     private final boolean runtimePublic;
 
+    private static final String ERROR_TENANT_MISMATCH = "TENANT_MISMATCH";
+
     public TenantIsolationFilter(JwtPrincipalAccessor principalAccessor,
                                  ProblemResponseWriter problemResponseWriter,
                                  boolean runtimePublic) {
@@ -52,7 +54,7 @@ public class TenantIsolationFilter extends OncePerRequestFilter {
 
         String tenantId = principalAccessor.currentTenantId();
         if (tenantId == null || !tenantId.equals(projectKey)) {
-            problemResponseWriter.forbidden(response, "Tenant mismatch: projectKey must match token tenant_id");
+            problemResponseWriter.forbidden(response, "Tenant mismatch: projectKey must match token tenant_id", ERROR_TENANT_MISMATCH);
             return;
         }
 

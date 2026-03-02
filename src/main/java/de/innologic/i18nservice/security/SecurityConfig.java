@@ -1,6 +1,7 @@
 package de.innologic.i18nservice.security;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -10,6 +11,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
@@ -27,6 +29,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.Duration;
 import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 @Configuration
@@ -74,6 +77,7 @@ public class SecurityConfig {
     }
 
     @Bean
+    @ConditionalOnMissingBean(JwtDecoder.class)
     JwtDecoder jwtDecoder(JwtSecurityProperties properties) {
         OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(
                 timestampValidator(properties),
@@ -147,9 +151,20 @@ public class SecurityConfig {
         scopes.setAuthorityPrefix("SCOPE_");
 
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setJwtGrantedAuthoritiesConverter((Jwt jwt) -> {
-            Collection<GrantedAuthority> authorities = scopes.convert(jwt);
-            return authorities == null ? List.of() : authorities;
+        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+            LinkedHashSet<GrantedAuthority> authorities = new LinkedHashSet<>();
+            Collection<GrantedAuthority> scopeAuthorities = scopes.convert(jwt);
+            if (scopeAuthorities != null) {
+                authorities.addAll(scopeAuthorities);
+            }
+            List<String> scp = jwt.getClaimAsStringList("scp");
+            if (scp != null) {
+                scp.stream()
+                        .filter(StringUtils::hasText)
+                        .map(scope -> (GrantedAuthority) new SimpleGrantedAuthority("SCOPE_" + scope))
+                        .forEach(authorities::add);
+            }
+            return authorities;
         });
         return converter;
     }

@@ -26,11 +26,11 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar /app/app.jar
 
 ENV APP_BUNDLE_STORAGE_BASE_PATH=/data/i18n \
-    I18NPORT=8080
+    I18NPORT=8101
 
-EXPOSE 8080
+EXPOSE 8101
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=10 \
-  CMD curl -fsS http://localhost:8080/actuator/health || exit 1
+  CMD curl -fsS http://localhost:8101/actuator/health || exit 1
 
 ENTRYPOINT ["java","-jar","/app/app.jar"]

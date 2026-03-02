@@ -6,6 +6,16 @@ import de.innologic.i18nservice.bundle.dto.BundleVersionResponse;
 import de.innologic.i18nservice.bundle.service.LanguageBundleService;
 import de.innologic.i18nservice.bundle.service.LanguageBundleService.StoredFile;
 import de.innologic.i18nservice.common.context.RequestContext;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -19,6 +29,7 @@ import org.springframework.web.multipart.MultipartFile;
 @Validated
 @RestController
 @RequestMapping("/api/v1/{projectKey}/languages/{languageCode}/bundle")
+@Tag(name = "Language Bundles", description = "Upload/download bundles, list versions, and manage snapshots")
 public class LanguageBundleController {
 
     private final LanguageBundleService service;
@@ -29,9 +40,23 @@ public class LanguageBundleController {
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
+    @Operation(
+            summary = "Upload bundle",
+            description = "Uploads a new bundle file for the language.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            tags = {"Language Bundles"}
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "201", description = "Bundle stored", content = @Content(mediaType = "application/json", schema = @Schema(implementation = BundleMetaResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Missing file or invalid payload"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid token"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Project or language not found"),
+            @ApiResponse(responseCode = "409", description = "Bundle version conflict")
+    })
     public BundleMetaResponse upload(
-            @PathVariable @NotBlank String projectKey,
-            @PathVariable @NotBlank String languageCode,
+            @PathVariable @Parameter(description = "Project key", example = "portal") @NotBlank String projectKey,
+            @PathVariable @Parameter(description = "Language code", example = "de-DE") @NotBlank String languageCode,
             @RequestPart("file") @NotNull MultipartFile file
     ) {
         return service.upload(projectKey, languageCode, file, RequestContext.actor());
@@ -41,9 +66,25 @@ public class LanguageBundleController {
      * Download AKTUELLES Bundle (mit ETag / If-None-Match -> 304)
      */
     @GetMapping
+    @Operation(
+            summary = "Download latest bundle",
+            description = "Streams the latest bundle with ETag support.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            tags = {"Language Bundles"},
+            parameters = {
+                    @Parameter(name = HttpHeaders.IF_NONE_MATCH, in = ParameterIn.HEADER, description = "ETag value from previous download")
+            }
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Bundle content returned"),
+            @ApiResponse(responseCode = "304", description = "Client already has latest bundle"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid token"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Language bundle not found")
+    })
     public ResponseEntity<Resource> download(
-            @PathVariable @NotBlank String projectKey,
-            @PathVariable @NotBlank String languageCode,
+            @PathVariable @Parameter(description = "Project key", example = "portal") @NotBlank String projectKey,
+            @PathVariable @Parameter(description = "Language code", example = "de-DE") @NotBlank String languageCode,
             @RequestHeader(name = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch
     ) {
         StoredFile stored = service.download(projectKey, languageCode);
@@ -54,9 +95,25 @@ public class LanguageBundleController {
      * Download einer KONKRETEN Version (mit ETag / If-None-Match -> 304)
      */
     @GetMapping("/version/{version}")
+    @Operation(
+            summary = "Download specific bundle version",
+            description = "Streams the requested bundle version with ETag support.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            tags = {"Language Bundles"},
+            parameters = {
+                    @Parameter(name = HttpHeaders.IF_NONE_MATCH, in = ParameterIn.HEADER, description = "ETag value")
+            }
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Bundle content returned"),
+            @ApiResponse(responseCode = "304", description = "Client already has that version"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid token"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Version not found")
+    })
     public ResponseEntity<Resource> downloadVersion(
-            @PathVariable @NotBlank String projectKey,
-            @PathVariable @NotBlank String languageCode,
+            @PathVariable @Parameter(description = "Project key", example = "portal") @NotBlank String projectKey,
+            @PathVariable @Parameter(description = "Language code", example = "de-DE") @NotBlank String languageCode,
             @PathVariable("version") @Min(1) int version,
             @RequestHeader(name = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch
     ) {
@@ -65,9 +122,21 @@ public class LanguageBundleController {
     }
 
     @GetMapping("/meta")
+    @Operation(
+            summary = "Read bundle metadata",
+            description = "Returns metadata for the active bundle.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            tags = {"Language Bundles"}
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Metadata retrieved", content = @Content(mediaType = "application/json", schema = @Schema(implementation = BundleMetaResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid token"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Language bundle not found")
+    })
     public BundleMetaResponse meta(
-            @PathVariable @NotBlank String projectKey,
-            @PathVariable @NotBlank String languageCode
+            @PathVariable @Parameter(description = "Project key", example = "portal") @NotBlank String projectKey,
+            @PathVariable @Parameter(description = "Language code", example = "de-DE") @NotBlank String languageCode
     ) {
         return service.getMeta(projectKey, languageCode);
     }
@@ -76,10 +145,22 @@ public class LanguageBundleController {
      * Meta einer KONKRETEN Version (ohne Download).
      */
     @GetMapping("/version/{version}/meta")
+    @Operation(
+            summary = "Read metadata for a bundle version",
+            description = "Returns metadata for the requested version without downloading.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            tags = {"Language Bundles"}
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Version metadata", content = @Content(mediaType = "application/json", schema = @Schema(implementation = BundleVersionResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid token"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Version not found")
+    })
     public BundleVersionResponse versionMeta(
-            @PathVariable @NotBlank String projectKey,
-            @PathVariable @NotBlank String languageCode,
-            @PathVariable("version") @Min(1) int version
+            @PathVariable @Parameter(description = "Project key", example = "portal") @NotBlank String projectKey,
+            @PathVariable @Parameter(description = "Language code", example = "de-DE") @NotBlank String languageCode,
+            @PathVariable("version") @Parameter(description = "Version number", example = "2") @Min(1) int version
     ) {
         return service.getVersionMeta(projectKey, languageCode, version);
     }
@@ -88,9 +169,20 @@ public class LanguageBundleController {
      * Versionsliste (neueste zuerst).
      */
     @GetMapping("/versions")
+    @Operation(
+            summary = "List bundle versions",
+            description = "Returns all versions (latest first).",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            tags = {"Language Bundles"}
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Version list", content = @Content(mediaType = "application/json", array = @ArraySchema(schema = @Schema(implementation = BundleVersionResponse.class)))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid token"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions")
+    })
     public java.util.List<BundleVersionResponse> versions(
-            @PathVariable @NotBlank String projectKey,
-            @PathVariable @NotBlank String languageCode
+            @PathVariable @Parameter(description = "Project key", example = "portal") @NotBlank String projectKey,
+            @PathVariable @Parameter(description = "Language code", example = "de-DE") @NotBlank String languageCode
     ) {
         return service.listVersions(projectKey, languageCode);
     }
@@ -99,10 +191,22 @@ public class LanguageBundleController {
      * Rollback auf eine bestimmte Bundle-Version.
      */
     @PostMapping("/rollback/{version}")
+    @Operation(
+            summary = "Rollback bundle",
+            description = "Rolls back to the given version.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            tags = {"Language Bundles"}
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Rolled back bundle", content = @Content(mediaType = "application/json", schema = @Schema(implementation = BundleMetaResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid token"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Version not found")
+    })
     public BundleMetaResponse rollback(
-            @PathVariable @NotBlank String projectKey,
-            @PathVariable @NotBlank String languageCode,
-            @PathVariable("version") @Min(1) int version
+            @PathVariable @Parameter(description = "Project key", example = "portal") @NotBlank String projectKey,
+            @PathVariable @Parameter(description = "Language code", example = "de-DE") @NotBlank String languageCode,
+            @PathVariable("version") @Parameter(description = "Version to rollback to", example = "3") @Min(1) int version
     ) {
         return service.rollback(projectKey, languageCode, version, RequestContext.actor());
     }
@@ -111,20 +215,44 @@ public class LanguageBundleController {
      * Diff zwischen zwei Bundle-Versionen.
      */
     @GetMapping("/diff")
+    @Operation(
+            summary = "Diff bundle versions",
+            description = "Returns the diff between two versions.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            tags = {"Language Bundles"}
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Diff returned", content = @Content(mediaType = "application/json", schema = @Schema(implementation = BundleDiffResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid token"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "One of the versions not found")
+    })
     public BundleDiffResponse diff(
-            @PathVariable @NotBlank String projectKey,
-            @PathVariable @NotBlank String languageCode,
-            @RequestParam(name = "from") @Min(1) int fromVersion,
-            @RequestParam(name = "to") @Min(1) int toVersion
+            @PathVariable @Parameter(description = "Project key", example = "portal") @NotBlank String projectKey,
+            @PathVariable @Parameter(description = "Language code", example = "de-DE") @NotBlank String languageCode,
+            @RequestParam(name = "from") @Parameter(description = "Starting bundle version", example = "1") @Min(1) int fromVersion,
+            @RequestParam(name = "to") @Parameter(description = "Target bundle version", example = "2") @Min(1) int toVersion
     ) {
         return service.diff(projectKey, languageCode, fromVersion, toVersion);
     }
 
     @DeleteMapping
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(
+            summary = "Delete bundle",
+            description = "Removes the current bundle.",
+            security = @SecurityRequirement(name = "bearerAuth"),
+            tags = {"Language Bundles"}
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "204", description = "Bundle deleted"),
+            @ApiResponse(responseCode = "401", description = "Missing or invalid token"),
+            @ApiResponse(responseCode = "403", description = "Insufficient permissions"),
+            @ApiResponse(responseCode = "404", description = "Bundle not found")
+    })
     public void delete(
-            @PathVariable @NotBlank String projectKey,
-            @PathVariable @NotBlank String languageCode
+            @PathVariable @Parameter(description = "Project key", example = "portal") @NotBlank String projectKey,
+            @PathVariable @Parameter(description = "Language code", example = "de-DE") @NotBlank String languageCode
     ) {
         service.deleteBundle(projectKey, languageCode, RequestContext.actor());
     }

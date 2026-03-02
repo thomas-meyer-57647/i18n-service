@@ -31,10 +31,10 @@ services:
       I18N_DB_PASSWORD: ${I18N_DB_PASSWORD:-${MARIADB_PASSWORD:-i18npass}}
 
       APP_BUNDLE_STORAGE_BASE_PATH: ${APP_BUNDLE_STORAGE_BASE_PATH:-/data/i18n}
-      I18NPORT: 8080
+      I18NPORT: 8101
       TZ: ${APP_TZ:-UTC}
     ports:
-      - "${APP_PORT:-8080}:8080"
+      - "${APP_PORT:-8101}:8101"
     volumes:
       - i18n_data:${APP_BUNDLE_STORAGE_BASE_PATH:-/data/i18n}
     depends_on:

@@ -88,9 +88,9 @@ Wichtige Umgebungsvariablen
 
 Die wichtigsten Werte kommen aus .env (siehe .env.example), typischerweise:
 
-APP_PORT (z. B. 8080)
+APP_PORT (z. B. 8101)
 
-I18NPORT (z. B. 8080)
+I18NPORT (z. B. 8101)
 
 I18N_DB_HOST (z. B. localhost oder mariadb)
 
@@ -116,7 +116,7 @@ IntelliJ Run Configuration
 
 Beispiel-ENV:
 
-`I18N_DB_HOST=localhost;I18N_DB_PORT=3306;I18N_DB_NAME=i18n;I18N_DB_USER=root;I18N_DB_PASSWORD=;I18NPORT=8080`
+`I18N_DB_HOST=localhost;I18N_DB_PORT=3306;I18N_DB_NAME=i18n;I18N_DB_USER=root;I18N_DB_PASSWORD=;I18NPORT=8101`
 
 Hinweis: `Include system environment variables` kann aktiviert bleiben, da die Variablen service-spezifisch sind.
 
